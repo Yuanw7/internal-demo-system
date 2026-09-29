@@ -1,0 +1,20 @@
+{
+  "name": "mentor-demo",
+  "interface": {
+    "displayName": "Mentor Email MCP Demo"
+  },
+  "plugins": [
+    {
+      "name": "email-research-mcp",
+      "source": {
+        "source": "local",
+        "path": "./plugins/email-research-mcp"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

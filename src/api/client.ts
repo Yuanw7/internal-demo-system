@@ -1,11 +1,16 @@
 import type {
   MCPFetchResult,
+  IngestionItemDetail,
+  IngestionItemsResponse,
+  IngestionSummaryResponse,
   PolicyState,
   PolicyUpdate,
   SearchRequest,
   SearchResponse,
   SourcesResponse,
   StatusResponse,
+  RetryIngestionRequest,
+  RetryIngestionResponse,
 } from './generated/contracts.ts';
 import { ContractValidationError, parseContract } from './validation.ts';
 
@@ -18,11 +23,24 @@ export interface RetrievalApi {
   getDocument(documentId: string): Promise<MCPFetchResult>;
   getPolicy(): Promise<PolicyState>;
   updatePolicy(request: PolicyUpdate): Promise<PolicyState>;
+  getIngestionSummary(connectorId?: string): Promise<IngestionSummaryResponse>;
+  getIngestionItems(filters?: IngestionItemFilters): Promise<IngestionItemsResponse>;
+  getIngestionItem(itemId: string): Promise<IngestionItemDetail>;
+  retryIngestionItem(itemId: string, request: RetryIngestionRequest): Promise<RetryIngestionResponse>;
+}
+
+export interface IngestionItemFilters {
+  status?: string;
+  connector_id?: string;
+  pipeline_stage?: string;
+  limit?: number;
+  cursor?: string;
 }
 
 export interface RetrievalApiClientOptions {
   baseUrl: string;
-  readToken: string;
+  authMode?: 'bearer' | 'none';
+  readToken?: string;
   adminToken?: string;
   fetchFn?: FetchLike;
   timeoutMs?: number;
@@ -63,16 +81,18 @@ type Credential = 'read' | 'admin';
 
 export class RetrievalApiClient implements RetrievalApi {
   private readonly baseUrl: string;
-  private readonly readToken: string;
+  private readonly authMode: 'bearer' | 'none';
+  private readonly readToken: string | undefined;
   private readonly adminToken: string | undefined;
   private readonly fetchFn: FetchLike;
   private readonly timeoutMs: number;
 
   constructor(options: RetrievalApiClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/$/, '');
+    this.authMode = options.authMode ?? 'bearer';
     this.readToken = options.readToken;
     this.adminToken = options.adminToken;
-    this.fetchFn = options.fetchFn ?? fetch;
+    this.fetchFn = (options.fetchFn ?? fetch).bind(globalThis);
     this.timeoutMs = options.timeoutMs ?? 10_000;
   }
 
@@ -107,6 +127,43 @@ export class RetrievalApiClient implements RetrievalApi {
     return this.request('/api/policy', 'PUT', 'admin', 'PolicyState', body);
   }
 
+  getIngestionSummary(connectorId = ''): Promise<IngestionSummaryResponse> {
+    const query = connectorId ? `?connector_id=${encodeURIComponent(connectorId)}` : '';
+    return this.request(`/api/ingestion/summary${query}`, 'GET', 'read', 'IngestionSummaryResponse');
+  }
+
+  getIngestionItems(filters: IngestionItemFilters = {}): Promise<IngestionItemsResponse> {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(filters)) {
+      if (value !== undefined && value !== '') query.set(key, String(value));
+    }
+    const suffix = query.size ? `?${query.toString()}` : '';
+    return this.request(`/api/ingestion/items${suffix}`, 'GET', 'read', 'IngestionItemsResponse');
+  }
+
+  getIngestionItem(itemId: string): Promise<IngestionItemDetail> {
+    return this.request(
+      `/api/ingestion/items/${encodeURIComponent(itemId)}`,
+      'GET',
+      'read',
+      'IngestionItemDetail',
+    );
+  }
+
+  retryIngestionItem(
+    itemId: string,
+    request: RetryIngestionRequest,
+  ): Promise<RetryIngestionResponse> {
+    const body = parseContract('RetryIngestionRequest', request);
+    return this.request(
+      `/api/ingestion/items/${encodeURIComponent(itemId)}/retry`,
+      'POST',
+      'admin',
+      'RetryIngestionResponse',
+      body,
+    );
+  }
+
   private async request<Name extends Parameters<typeof parseContract>[0]>(
     path: string,
     method: 'GET' | 'POST' | 'PUT',
@@ -115,7 +172,7 @@ export class RetrievalApiClient implements RetrievalApi {
     body?: unknown,
   ): Promise<ReturnType<typeof parseContract<Name>>> {
     const token = credential === 'admin' ? this.adminToken : this.readToken;
-    if (!token) throw new MissingCredentialError(credential);
+    if (this.authMode === 'bearer' && !token) throw new MissingCredentialError(credential);
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
@@ -123,8 +180,8 @@ export class RetrievalApiClient implements RetrievalApi {
     try {
       const headers: Record<string, string> = {
         Accept: 'application/json',
-        Authorization: `Bearer ${token}`,
       };
+      if (this.authMode === 'bearer' && token) headers.Authorization = `Bearer ${token}`;
       if (body !== undefined) headers['Content-Type'] = 'application/json';
 
       const requestInit: RequestInit = {

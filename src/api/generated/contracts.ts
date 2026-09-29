@@ -52,6 +52,97 @@ export interface IngestResponse {
   document_ids: Array<string>;
 }
 
+export interface IngestionAttempt {
+  attempt_number: number;
+  worker_id: string;
+  started_at: string;
+  finished_at: string | null;
+  outcome: string;
+  error_class: string;
+  error_code: string;
+  duration_ms: number | null;
+}
+
+export interface IngestionCounts {
+  pending: number;
+  processing: number;
+  processed: number;
+  failed: number;
+  retrying: number;
+}
+
+export interface IngestionEvent {
+  id: number;
+  from_status: string;
+  to_status: string;
+  pipeline_stage: string;
+  actor_type: string;
+  actor_id: string;
+  reason: string;
+  occurred_at: string;
+}
+
+export interface IngestionItemDetail {
+  id: string;
+  connector_id: string;
+  external_id: string;
+  display_name: string;
+  status: "pending" | "processing" | "processed" | "failed" | "retrying";
+  pipeline_stage: "discovered" | "stability_check" | "fetch" | "parse" | "persist" | "fts_index" | "vectorize" | "publish";
+  outcome: string;
+  attempt_count: number;
+  max_attempts: number;
+  discovered_at: string;
+  started_at: string | null;
+  searchable_at: string | null;
+  finished_at: string | null;
+  error_code: string;
+  state_version: number;
+  source_locator: string;
+  content_fingerprint: string;
+  pipeline_version: string;
+  semantic_required: boolean;
+  semantic_generation_id: string | null;
+  input_bytes: number;
+  duration_ms: number | null;
+  error_class: string;
+  error_message: string;
+  document_ids: Array<string>;
+  attempts: Array<IngestionAttempt>;
+  events: Array<IngestionEvent>;
+}
+
+export interface IngestionItemSummary {
+  id: string;
+  connector_id: string;
+  external_id: string;
+  display_name: string;
+  status: "pending" | "processing" | "processed" | "failed" | "retrying";
+  pipeline_stage: "discovered" | "stability_check" | "fetch" | "parse" | "persist" | "fts_index" | "vectorize" | "publish";
+  outcome: string;
+  attempt_count: number;
+  max_attempts: number;
+  discovered_at: string;
+  started_at: string | null;
+  searchable_at: string | null;
+  finished_at: string | null;
+  error_code: string;
+  state_version: number;
+}
+
+export interface IngestionItemsResponse {
+  items: Array<IngestionItemSummary>;
+  next_cursor: string | null;
+}
+
+export interface IngestionSummaryResponse {
+  as_of: string;
+  counts: IngestionCounts;
+  vector_backlog: number;
+  unresolved_dead_letters: number;
+  oldest_pending_age_seconds: number | null;
+}
+
 export interface MCPFetchResult {
   id: string;
   title: string;
@@ -76,6 +167,19 @@ export interface RetrievalPolicy {
   recency_boost?: number;
   half_life_days?: number;
   default_limit?: number;
+}
+
+export interface RetryIngestionRequest {
+  expected_state_version: number;
+  mode?: "resume_failed_stage" | "restart";
+  reason: string;
+}
+
+export interface RetryIngestionResponse {
+  item_id: string;
+  status: "retrying";
+  next_attempt_at: string;
+  state_version: number;
 }
 
 export interface ScoreDetails {
@@ -150,10 +254,19 @@ export interface ContractTypeMap {
   FetchMetadata: FetchMetadata;
   IngestRequest: IngestRequest;
   IngestResponse: IngestResponse;
+  IngestionAttempt: IngestionAttempt;
+  IngestionCounts: IngestionCounts;
+  IngestionEvent: IngestionEvent;
+  IngestionItemDetail: IngestionItemDetail;
+  IngestionItemSummary: IngestionItemSummary;
+  IngestionItemsResponse: IngestionItemsResponse;
+  IngestionSummaryResponse: IngestionSummaryResponse;
   MCPFetchResult: MCPFetchResult;
   PolicyState: PolicyState;
   PolicyUpdate: PolicyUpdate;
   RetrievalPolicy: RetrievalPolicy;
+  RetryIngestionRequest: RetryIngestionRequest;
+  RetryIngestionResponse: RetryIngestionResponse;
   ScoreDetails: ScoreDetails;
   SearchHit: SearchHit;
   SearchRequest: SearchRequest;
@@ -389,7 +502,8 @@ export const contractSchemas = {
     "properties": {
       "source_id": {
         "type": "string",
-        "pattern": "^[a-zA-Z0-9_-]{1,80}$",
+        "maxLength": 100,
+        "minLength": 1,
         "title": "Source Id"
       },
       "documents": {
@@ -441,6 +555,548 @@ export const contractSchemas = {
       "document_ids"
     ],
     "title": "IngestResponse"
+  },
+  "IngestionAttempt": {
+    "properties": {
+      "attempt_number": {
+        "type": "integer",
+        "title": "Attempt Number"
+      },
+      "worker_id": {
+        "type": "string",
+        "title": "Worker Id"
+      },
+      "started_at": {
+        "type": "string",
+        "title": "Started At"
+      },
+      "finished_at": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Finished At"
+      },
+      "outcome": {
+        "type": "string",
+        "title": "Outcome"
+      },
+      "error_class": {
+        "type": "string",
+        "title": "Error Class"
+      },
+      "error_code": {
+        "type": "string",
+        "title": "Error Code"
+      },
+      "duration_ms": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Duration Ms"
+      }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+      "attempt_number",
+      "worker_id",
+      "started_at",
+      "finished_at",
+      "outcome",
+      "error_class",
+      "error_code",
+      "duration_ms"
+    ],
+    "title": "IngestionAttempt"
+  },
+  "IngestionCounts": {
+    "properties": {
+      "pending": {
+        "type": "integer",
+        "title": "Pending"
+      },
+      "processing": {
+        "type": "integer",
+        "title": "Processing"
+      },
+      "processed": {
+        "type": "integer",
+        "title": "Processed"
+      },
+      "failed": {
+        "type": "integer",
+        "title": "Failed"
+      },
+      "retrying": {
+        "type": "integer",
+        "title": "Retrying"
+      }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+      "pending",
+      "processing",
+      "processed",
+      "failed",
+      "retrying"
+    ],
+    "title": "IngestionCounts"
+  },
+  "IngestionEvent": {
+    "properties": {
+      "id": {
+        "type": "integer",
+        "title": "Id"
+      },
+      "from_status": {
+        "type": "string",
+        "title": "From Status"
+      },
+      "to_status": {
+        "type": "string",
+        "title": "To Status"
+      },
+      "pipeline_stage": {
+        "type": "string",
+        "title": "Pipeline Stage"
+      },
+      "actor_type": {
+        "type": "string",
+        "title": "Actor Type"
+      },
+      "actor_id": {
+        "type": "string",
+        "title": "Actor Id"
+      },
+      "reason": {
+        "type": "string",
+        "title": "Reason"
+      },
+      "occurred_at": {
+        "type": "string",
+        "title": "Occurred At"
+      }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+      "id",
+      "from_status",
+      "to_status",
+      "pipeline_stage",
+      "actor_type",
+      "actor_id",
+      "reason",
+      "occurred_at"
+    ],
+    "title": "IngestionEvent"
+  },
+  "IngestionItemDetail": {
+    "properties": {
+      "id": {
+        "type": "string",
+        "title": "Id"
+      },
+      "connector_id": {
+        "type": "string",
+        "title": "Connector Id"
+      },
+      "external_id": {
+        "type": "string",
+        "title": "External Id"
+      },
+      "display_name": {
+        "type": "string",
+        "title": "Display Name"
+      },
+      "status": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "processing",
+          "processed",
+          "failed",
+          "retrying"
+        ],
+        "title": "Status"
+      },
+      "pipeline_stage": {
+        "type": "string",
+        "enum": [
+          "discovered",
+          "stability_check",
+          "fetch",
+          "parse",
+          "persist",
+          "fts_index",
+          "vectorize",
+          "publish"
+        ],
+        "title": "Pipeline Stage"
+      },
+      "outcome": {
+        "type": "string",
+        "title": "Outcome"
+      },
+      "attempt_count": {
+        "type": "integer",
+        "title": "Attempt Count"
+      },
+      "max_attempts": {
+        "type": "integer",
+        "title": "Max Attempts"
+      },
+      "discovered_at": {
+        "type": "string",
+        "title": "Discovered At"
+      },
+      "started_at": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Started At"
+      },
+      "searchable_at": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Searchable At"
+      },
+      "finished_at": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Finished At"
+      },
+      "error_code": {
+        "type": "string",
+        "title": "Error Code"
+      },
+      "state_version": {
+        "type": "integer",
+        "title": "State Version"
+      },
+      "source_locator": {
+        "type": "string",
+        "title": "Source Locator"
+      },
+      "content_fingerprint": {
+        "type": "string",
+        "title": "Content Fingerprint"
+      },
+      "pipeline_version": {
+        "type": "string",
+        "title": "Pipeline Version"
+      },
+      "semantic_required": {
+        "type": "boolean",
+        "title": "Semantic Required"
+      },
+      "semantic_generation_id": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Semantic Generation Id"
+      },
+      "input_bytes": {
+        "type": "integer",
+        "title": "Input Bytes"
+      },
+      "duration_ms": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Duration Ms"
+      },
+      "error_class": {
+        "type": "string",
+        "title": "Error Class"
+      },
+      "error_message": {
+        "type": "string",
+        "title": "Error Message"
+      },
+      "document_ids": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array",
+        "title": "Document Ids"
+      },
+      "attempts": {
+        "items": {
+          "$ref": "#/components/schemas/IngestionAttempt"
+        },
+        "type": "array",
+        "title": "Attempts"
+      },
+      "events": {
+        "items": {
+          "$ref": "#/components/schemas/IngestionEvent"
+        },
+        "type": "array",
+        "title": "Events"
+      }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+      "id",
+      "connector_id",
+      "external_id",
+      "display_name",
+      "status",
+      "pipeline_stage",
+      "outcome",
+      "attempt_count",
+      "max_attempts",
+      "discovered_at",
+      "started_at",
+      "searchable_at",
+      "finished_at",
+      "error_code",
+      "state_version",
+      "source_locator",
+      "content_fingerprint",
+      "pipeline_version",
+      "semantic_required",
+      "semantic_generation_id",
+      "input_bytes",
+      "duration_ms",
+      "error_class",
+      "error_message",
+      "document_ids",
+      "attempts",
+      "events"
+    ],
+    "title": "IngestionItemDetail"
+  },
+  "IngestionItemSummary": {
+    "properties": {
+      "id": {
+        "type": "string",
+        "title": "Id"
+      },
+      "connector_id": {
+        "type": "string",
+        "title": "Connector Id"
+      },
+      "external_id": {
+        "type": "string",
+        "title": "External Id"
+      },
+      "display_name": {
+        "type": "string",
+        "title": "Display Name"
+      },
+      "status": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "processing",
+          "processed",
+          "failed",
+          "retrying"
+        ],
+        "title": "Status"
+      },
+      "pipeline_stage": {
+        "type": "string",
+        "enum": [
+          "discovered",
+          "stability_check",
+          "fetch",
+          "parse",
+          "persist",
+          "fts_index",
+          "vectorize",
+          "publish"
+        ],
+        "title": "Pipeline Stage"
+      },
+      "outcome": {
+        "type": "string",
+        "title": "Outcome"
+      },
+      "attempt_count": {
+        "type": "integer",
+        "title": "Attempt Count"
+      },
+      "max_attempts": {
+        "type": "integer",
+        "title": "Max Attempts"
+      },
+      "discovered_at": {
+        "type": "string",
+        "title": "Discovered At"
+      },
+      "started_at": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Started At"
+      },
+      "searchable_at": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Searchable At"
+      },
+      "finished_at": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Finished At"
+      },
+      "error_code": {
+        "type": "string",
+        "title": "Error Code"
+      },
+      "state_version": {
+        "type": "integer",
+        "title": "State Version"
+      }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+      "id",
+      "connector_id",
+      "external_id",
+      "display_name",
+      "status",
+      "pipeline_stage",
+      "outcome",
+      "attempt_count",
+      "max_attempts",
+      "discovered_at",
+      "started_at",
+      "searchable_at",
+      "finished_at",
+      "error_code",
+      "state_version"
+    ],
+    "title": "IngestionItemSummary"
+  },
+  "IngestionItemsResponse": {
+    "properties": {
+      "items": {
+        "items": {
+          "$ref": "#/components/schemas/IngestionItemSummary"
+        },
+        "type": "array",
+        "title": "Items"
+      },
+      "next_cursor": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Next Cursor"
+      }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+      "items",
+      "next_cursor"
+    ],
+    "title": "IngestionItemsResponse"
+  },
+  "IngestionSummaryResponse": {
+    "properties": {
+      "as_of": {
+        "type": "string",
+        "title": "As Of"
+      },
+      "counts": {
+        "$ref": "#/components/schemas/IngestionCounts"
+      },
+      "vector_backlog": {
+        "type": "integer",
+        "title": "Vector Backlog"
+      },
+      "unresolved_dead_letters": {
+        "type": "integer",
+        "title": "Unresolved Dead Letters"
+      },
+      "oldest_pending_age_seconds": {
+        "anyOf": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Oldest Pending Age Seconds"
+      }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+      "as_of",
+      "counts",
+      "vector_backlog",
+      "unresolved_dead_letters",
+      "oldest_pending_age_seconds"
+    ],
+    "title": "IngestionSummaryResponse"
   },
   "MCPFetchResult": {
     "properties": {
@@ -520,15 +1176,11 @@ export const contractSchemas = {
   "RetrievalPolicy": {
     "properties": {
       "source_weights": {
-        "patternProperties": {
-          "^[a-zA-Z0-9_-]{1,80}$": {
-            "type": "number",
-            "maximum": 10,
-            "minimum": 0
-          }
+        "additionalProperties": {
+          "type": "number"
         },
         "type": "object",
-        "maxProperties": 200,
+        "maxProperties": 1000,
         "title": "Source Weights"
       },
       "recency_boost": {
@@ -556,6 +1208,67 @@ export const contractSchemas = {
     "additionalProperties": false,
     "type": "object",
     "title": "RetrievalPolicy"
+  },
+  "RetryIngestionRequest": {
+    "properties": {
+      "expected_state_version": {
+        "type": "integer",
+        "minimum": 1,
+        "title": "Expected State Version"
+      },
+      "mode": {
+        "type": "string",
+        "enum": [
+          "resume_failed_stage",
+          "restart"
+        ],
+        "title": "Mode",
+        "default": "resume_failed_stage"
+      },
+      "reason": {
+        "type": "string",
+        "maxLength": 500,
+        "minLength": 1,
+        "title": "Reason"
+      }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+      "expected_state_version",
+      "reason"
+    ],
+    "title": "RetryIngestionRequest"
+  },
+  "RetryIngestionResponse": {
+    "properties": {
+      "item_id": {
+        "type": "string",
+        "title": "Item Id"
+      },
+      "status": {
+        "type": "string",
+        "const": "retrying",
+        "title": "Status"
+      },
+      "next_attempt_at": {
+        "type": "string",
+        "title": "Next Attempt At"
+      },
+      "state_version": {
+        "type": "integer",
+        "title": "State Version"
+      }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+      "item_id",
+      "status",
+      "next_attempt_at",
+      "state_version"
+    ],
+    "title": "RetryIngestionResponse"
   },
   "ScoreDetails": {
     "properties": {
@@ -648,11 +1361,10 @@ export const contractSchemas = {
       },
       "source_ids": {
         "items": {
-          "type": "string",
-          "pattern": "^[a-zA-Z0-9_-]{1,80}$"
+          "type": "string"
         },
         "type": "array",
-        "maxItems": 200,
+        "maxItems": 100,
         "title": "Source Ids"
       },
       "since": {
@@ -735,7 +1447,9 @@ export const contractSchemas = {
     "properties": {
       "id": {
         "type": "string",
-        "pattern": "^[a-zA-Z0-9_-]{1,80}$",
+        "maxLength": 100,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9._-]+$",
         "title": "Id"
       },
       "name": {
@@ -774,7 +1488,9 @@ export const contractSchemas = {
     "properties": {
       "id": {
         "type": "string",
-        "pattern": "^[a-zA-Z0-9_-]{1,80}$",
+        "maxLength": 100,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9._-]+$",
         "title": "Id"
       },
       "name": {

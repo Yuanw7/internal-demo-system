@@ -13,8 +13,8 @@
 
 ## Ownership boundary
 
-- 第一部分服务拥有数据接入、索引、权威检索排序、HTTP API 和 MCP tools。
-- 本仓库拥有 Dashboard、契约客户端、mock、策略实验、token 测量和联调记录。
+- 本仓库内的 Retrieval Hub 拥有数据接入、索引、权威检索排序、HTTP API 和 MCP tools。
+- 本仓库同时拥有 Dashboard、契约客户端、mock、策略实验、token 测量和联调记录。
 - 不读取或复制系统原始内容文件；开发使用虚构 fixture。
 - 不在客户端重新计算 `score`、修改结果顺序或模拟“更正确”的 ranking。
 
@@ -39,7 +39,7 @@
 
 ## Change discipline
 
-- 上游契约文件只通过新的正式交付包更新，不做本地便利性修改。
+- 契约文件是跨后端、Dashboard 和 MCP 验收的正式交付面；任何更新必须归档旧版本并记录差异，不做局部便利性修改。
 - 契约更新后运行 `npm test`，检查路径/schema 差异，并同步架构和 roadmap。
 - 任何新增依赖应服务于当前阶段，避免提前搭建后续基础设施。
-- 需要改变上游 ranking、MCP schema 或 fetch 语义时，先形成接口变更提案并等待确认。
+- 需要改变 ranking、MCP schema 或 fetch 语义时，先形成接口变更提案、更新版本迭代日志并等待确认。

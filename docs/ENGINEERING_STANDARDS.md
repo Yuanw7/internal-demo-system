@@ -4,8 +4,8 @@
 
 - Dashboard 和评测工具使用 TypeScript、ESM、严格类型检查。
 - Dashboard 当前采用 Vite + 原生 DOM，不引入组件框架；需要复杂交互后再评估升级。
-- 第一部分上游保持语言无关，通过 OpenAPI/HTTP 和 MCP 交互。
-- 阶段 B 再确定并锁定 UI 框架、Node 版本和依赖，不在阶段 A 提前安装。
+- Retrieval Hub 使用 Python 3.11+、严格 Pydantic DTO、SQLite migration、FastAPI 和官方 MCP Python SDK。
+- HTTP 与 MCP handler 只负责 transport，必须调用同一 Retrieval Hub service。
 
 ## 接口代码
 
@@ -36,9 +36,12 @@
 3. Client：成功响应及 401/403/404/409/413/422。
 4. Workflow：读取策略、编辑、保存、再次搜索。
 5. Evaluation：固定 query、policy version、排名与 token 指标。
-6. E2E：真实上游 HTTP，再到 MCP/ChatGPT。
+6. Backend：migration、版本化、解析、FTS5、query planner、语义索引、hybrid ranking、HTTP 和 MCP transport。
+7. E2E：本地 Hub → Dashboard/Codex；外部条件到位后再到 ChatGPT。
 
 测试不得依赖真实系统内容；使用 `docs/contracts/examples.json` 或明确标记的虚构 fixture。
+
+语义模型与向量索引属于本地生成物，不提交 Git。测试使用 fake semantic adapter 验证融合行为，不能要求 CI 下载模型；真实语料只用于受控验收报告。
 
 ## Token 测量
 
@@ -52,7 +55,7 @@
 ## 提交前质量门
 
 - `npm test` 通过。
-- 新接口使用已在 OpenAPI 中存在的字段。
+- 新接口使用已在 OpenAPI 中存在的字段；变更前归档旧契约并记录版本差异。
 - 新行为在 `ROADMAP.md` 当前阶段范围内。
 - 架构、契约或阶段状态发生变化时同步更新对应文档。
 - 没有真实正文、凭据或临时公网地址进入仓库。

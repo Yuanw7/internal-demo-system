@@ -1,11 +1,11 @@
 ---
 name: mcp-retrieval-demo
-description: Maintain and implement this repository's Retrieval Policy dashboard, contract client, policy evaluation, token measurement, and MCP integration checks against the provided upstream API. Use for planning, coding, testing, or reviewing this demo; do not use to alter upstream ingestion or ranking without an explicit scope change.
+description: Maintain and implement this repository's local Retrieval Hub, read-only MCP server, Retrieval Policy dashboard, contract client, evaluation, and Codex/ChatGPT integration checks.
 ---
 
 # MCP Retrieval Demo
 
-Build the Retrieval Policy demo without creating a second retrieval implementation.
+Build the internal research Retrieval Hub and Policy demo without creating a second retrieval implementation.
 
 ## Read first
 
@@ -20,7 +20,7 @@ For API work, inspect only the relevant paths and schemas in `docs/contracts/ope
 
 ## Invariants
 
-- Treat the upstream Retrieval Hub as the sole owner of ingestion, indexing, ranking, policy persistence, HTTP, and MCP behavior.
+- Treat `backend/src/research_hub` as the sole owner of ingestion, indexing, ranking, policy persistence, HTTP, and MCP behavior.
 - Do not read or import system source documents; use fictional fixtures.
 - Keep API DTOs in `snake_case` and derive them from the contract.
 - Never re-rank search results in the Dashboard.
@@ -32,9 +32,9 @@ For API work, inspect only the relevant paths and schemas in `docs/contracts/ope
 ## Workflow
 
 1. Identify the active roadmap phase and stay inside its exit criteria.
-2. Confirm the relevant OpenAPI operation and example before implementing a client call.
+2. Confirm the relevant OpenAPI operation and example before implementing a client call or transport change.
 3. Add the smallest behavior and observable tests needed for that phase.
-4. Run `npm test` plus phase-specific checks.
+4. Run `npm test` plus phase-specific checks; MCP changes require the backend virtual environment and transport tests.
 5. Update architecture, roadmap status, or the current phase report when a decision or known limitation changes.
 
 ## Engineering choices
@@ -47,4 +47,4 @@ For API work, inspect only the relevant paths and schemas in `docs/contracts/ope
 
 ## Stop and request direction
 
-Do not proceed without confirmation when work requires changing the upstream OpenAPI/MCP contract, connecting real accounts, exposing a public endpoint, using paid APIs, or processing real internal content.
+Do not proceed without confirmation when work requires changing the OpenAPI/MCP contract, connecting real accounts, exposing a public endpoint, using paid APIs, or processing real internal content.

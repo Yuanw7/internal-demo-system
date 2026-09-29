@@ -2,6 +2,8 @@
 
 状态：未来工作，不属于当前 Demo 已完成能力。
 
+第一部分本地补全的具体实施边界、禁止项、Git 版本差异和验收标准，统一见 [`FIRST_PART_LOCAL_COMPLETION_PLAN.md`](FIRST_PART_LOCAL_COMPLETION_PLAN.md)。本文继续记录真实数据实验与规模化专题，不重复定义实施架构。
+
 ## Capital IQ PDF 受控实验
 
 候选数据源：用户提供的 `Capital IQ Data` 目录。当前仓库按项目边界不读取、不复制系统原始内容，因此尚未对其中 PDF 做内容检查、导入或结果声明。
@@ -16,7 +18,7 @@
 - 分别测量 ingest 成功率、解析耗时、检索召回、Top-k 精度、弱相关污染、fetch token 和引用页定位。
 - 输出只保留允许共享的聚合指标、脱敏查询和文档 ID；真实正文与账号信息不进入 Git。
 
-该实验应由拥有数据接入责任的上游 Retrieval Hub 在受控环境执行。本仓库只消费正式 API/MCP 输出做 Dashboard 与评测，不新增 PDF 解析器或影子索引。
+该实验应由本仓库 Retrieval Hub 在受控外部数据目录执行。Dashboard 只消费正式 API/MCP 输出，不新增 PDF 解析器或影子索引；真实正文、运行数据库和凭据仍不得进入 Git。
 
 ## 数据工程重点问题
 

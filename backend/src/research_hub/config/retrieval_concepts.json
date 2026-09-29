@@ -1,0 +1,24 @@
+{
+  "version": "finance-concepts-v1",
+  "concepts": [
+    {"id": "nvidia", "aliases": ["英伟达", "nvidia", "nvda"], "terms": ["nvidia", "nvda"]},
+    {"id": "nebius", "aliases": ["nebius", "nbis"], "terms": ["nebius", "nbis"]},
+    {"id": "snowflake", "aliases": ["snowflake", "snow"], "terms": ["snowflake", "snow"]},
+    {"id": "kioxia", "aliases": ["kioxia"], "terms": ["kioxia"]},
+    {
+      "id": "gpu_products",
+      "aliases": ["显卡", "gpu", "gpu型号", "加速卡", "accelerator"],
+      "terms": ["gpu", "accelerator", "h100", "h200", "b100", "b200", "gb200", "gb300", "blackwell", "rubin"]
+    },
+    {
+      "id": "ai_infrastructure",
+      "aliases": ["ai infra", "ai infrastructure", "人工智能基础设施", "ai基础设施", "算力基础设施"],
+      "terms": ["ai infrastructure", "data center", "datacenter", "gpu cluster", "server", "rack", "power", "cooling", "networking", "hbm", "nvlink", "infiniband", "spectrum-x"]
+    },
+    {
+      "id": "capital_expenditure",
+      "aliases": ["资本开支", "资本支出", "capex"],
+      "terms": ["capital expenditure", "capex", "capital spending"]
+    }
+  ]
+}

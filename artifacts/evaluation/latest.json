@@ -113,12 +113,12 @@
     },
     {
       "label": "mcp_tool_schemas_all_three",
-      "characters": 2285,
-      "utf8_bytes": 2285,
-      "ascii_characters": 2285,
+      "characters": 2251,
+      "utf8_bytes": 2251,
+      "ascii_characters": 2251,
       "han_characters": 0,
       "other_non_ascii_characters": 0,
-      "estimated_tokens": 572
+      "estimated_tokens": 563
     },
     {
       "label": "mcp_search_arguments",
@@ -177,7 +177,7 @@
   ],
   "token_comparisons": {
     "lean_search_vs_detailed_percent_reduction": 72.3,
-    "advanced_tool_schema_increment_tokens": 330,
+    "advanced_tool_schema_increment_tokens": 321,
     "one_search_one_fetch_estimated_tokens": 855,
     "fetch_share_of_standard_flow_percent": 44.6
   }

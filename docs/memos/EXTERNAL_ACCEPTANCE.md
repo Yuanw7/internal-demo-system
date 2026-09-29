@@ -1,18 +1,20 @@
 # 外部验收备忘录
 
-状态：等待外部前置条件；本仓库内可执行交付已完成。
+状态：本地 Hub/Codex MCP 与授权真实资料子集已通过；等待 ChatGPT 外部连接验收。
 
 更新日期：2026-09-24
 
 ## 当前实测状态
 
-- `http://127.0.0.1:8765/healthz` 无服务监听。
-- `RESEARCH_HUB_BASE_URL`、`RESEARCH_HUB_READ_TOKEN`、`RESEARCH_HUB_ADMIN_TOKEN` 均未配置。
-- 当前 Codex 会话没有 Retrieval Hub 的 `search`、`fetch`、`search_documents` Custom MCP Tools。
-- MCP resource 清单中也没有 Retrieval Hub Server。
-- 依据仓库边界，未读取或复制用户提供的 Capital IQ 原始 PDF。
+- 本地 fixture Hub 已在 `127.0.0.1:8765` 通过 live HTTP 检查。
+- stdio 与 Streamable HTTP MCP 均已完成真实初始化、工具发现和搜索调用。
+- `internalResearch` 已注册到本机 Codex；新临时 Codex 会话完成 `search → fetch → 带引用分析`。
+- 修改 MCP 配置不会给已经运行中的当前会话热添加工具；需要新会话。
+- 用户已明确授权本轮处理所附 Capital IQ 资料。原始归档保持在仓库外，只把解析结果写入 Git ignore 的隔离测试库。
+- 所附 802 份 PDF 已全部进入本地处理：792 份成功、9 份 `pdf_parse_failed`、1 份超过 20 MB 安全上限。
+- 真实库 stdio MCP 与临时 Codex 会话完成 `search_documents → fetch → 事实/推断/冲突/缺口分析`；详细证据见 `REAL_DATA_ACCEPTANCE_2026-09-24.md`。
 
-因此真实 HTTP、MCP、ChatGPT 引用、metadata filter 和 PDF 数据工程实验保持 `not_run`。Fixture 结果不会替代这些证据。
+因此本地 HTTP/MCP/Codex fixture 和真实资料全量本地验收为 `passed_with_known_gaps`；ChatGPT developer mode、远程可打开引用仍为 `not_run`。10 份失败报告、重复正文折叠和 source/membership 语义仍需后续决策。
 
 ## 需要提供的外部输入
 
@@ -29,7 +31,7 @@
 1. 三家公司及各自允许匹配的公司名、ticker、曾用名和子公司别名。
 2. 一个明确的自然月和时区口径。
 3. 数据使用权限与允许输出的聚合指标范围。
-4. 由上游 Retrieval Hub 负责的受控导入环境；本仓库不直接解析或索引原始 PDF。
+4. 本仓库 Retrieval Hub 的受控外部数据目录；原始 PDF、数据库和抽取正文不得进入 Git。
 
 ## 到位后的执行顺序
 

@@ -8,3 +8,12 @@ coverage/
 *.log
 artifacts/live/
 .DS_Store
+backend/.venv/
+backend/data/
+backend/src/*.egg-info/
+backend/**/*.sqlite3
+backend/**/access.local.json
+backend/**/codex-mcp.local.toml
+backend/**/__pycache__/
+backend/.pytest_cache/
+/:memory:.ses

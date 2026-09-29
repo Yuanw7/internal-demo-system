@@ -1,0 +1,51 @@
+{
+  "version": "mentor-source-ranking-example-v1",
+  "tier_weights": {
+    "1": 1.35,
+    "2": 1.15,
+    "3": 1.0,
+    "4": 0.8
+  },
+  "role_precedence": [
+    "analyst",
+    "report_author",
+    "email_sender",
+    "institution",
+    "internal_note",
+    "data_provider",
+    "research_platform",
+    "news",
+    "social_media",
+    "manual_upload"
+  ],
+  "sources": [
+    {
+      "id": "mentor_orion_analyst",
+      "display_name": "Mentor Demo Orion Analyst",
+      "source_type": "analyst",
+      "priority_tier": 1,
+      "aliases": ["orion.mentor-demo@example.invalid"]
+    },
+    {
+      "id": "mentor_harbor_flow",
+      "display_name": "Mentor Demo Harbor Flow",
+      "source_type": "email_sender",
+      "priority_tier": 1,
+      "aliases": ["harbor.mentor-demo@example.invalid"]
+    },
+    {
+      "id": "mentor_northstar_research",
+      "display_name": "Mentor Demo Northstar Research",
+      "source_type": "institution",
+      "priority_tier": 2,
+      "aliases": ["northstar.mentor-demo@example.invalid", "Northstar Mentor Research"]
+    },
+    {
+      "id": "mentor_general_attachments",
+      "display_name": "Mentor Local Unmatched Email",
+      "source_type": "manual_upload",
+      "priority_tier": 3,
+      "aliases": ["Mentor General Attachments"]
+    }
+  ]
+}

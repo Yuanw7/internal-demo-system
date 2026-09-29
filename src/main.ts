@@ -11,6 +11,9 @@ import {
   type RetrievalApi,
 } from './api/index.ts';
 import type {
+  IngestionItemDetail,
+  IngestionItemSummary,
+  IngestionSummaryResponse,
   MCPFetchResult,
   PolicyState,
   RetrievalPolicy,
@@ -28,6 +31,11 @@ import {
   rankHits,
   upsertMetadataLine,
 } from './ui/view-model.ts';
+import {
+  clearLiveConnectionPreference,
+  loadLiveConnectionPreference,
+  saveLiveConnectionPreference,
+} from './ui/connection-preference.ts';
 
 type ConnectionMode = 'fixture' | 'live';
 
@@ -75,7 +83,11 @@ function describeError(error: unknown): string {
     return labels[error.status] ?? `${error.code}（HTTP ${error.status}）`;
   }
   if (error instanceof MissingCredentialError) return '缺少所需凭据，请在连接环境中补充 Token';
-  if (error instanceof UnsupportedMockFixtureError) return `Fixture 限制：${error.message}`;
+  if (error instanceof UnsupportedMockFixtureError) {
+    return error.message.includes('policy update')
+      ? '当前是虚构 Fixture，只有“示例策略”可以保存；请先在“连接环境”切换并连接上游 HTTP 服务。'
+      : '当前是虚构 Fixture，只支持“芯片”契约样例；请先在“连接环境”切换并连接上游 HTTP 服务。';
+  }
   if (error instanceof ApiProtocolError) return `接口契约不匹配：${error.message}`;
   if (error instanceof ContractValidationError) return `字段校验失败：${error.message}`;
   if (error instanceof Error) return error.message;
@@ -92,19 +104,32 @@ class Dashboard {
   private searchResponse: SearchResponse | undefined;
   private comparisonBaseline: SearchResponse | undefined;
   private lastSearchRequest: SearchRequest | undefined;
+  private ingestionSummary: IngestionSummaryResponse | undefined;
+  private ingestionItems: IngestionItemSummary[] = [];
+  private ingestionTimer: ReturnType<typeof setInterval> | undefined;
   private toastTimer: ReturnType<typeof setTimeout> | undefined;
 
   async start(): Promise<void> {
     this.renderResearchLenses();
     this.bindEvents();
+    const restored = this.restoreLiveConnection();
+    if (restored) {
+      const connected = await this.refreshWorkspace();
+      if (connected) this.startIngestionPolling();
+      return;
+    }
     await this.refreshWorkspace();
   }
 
   private bindEvents(): void {
     element<HTMLSelectElement>('connection-mode').addEventListener('change', (event) => {
       const mode = (event.currentTarget as HTMLSelectElement).value as ConnectionMode;
-      element('live-fields').hidden = mode !== 'live';
-      button('example-policy').hidden = mode !== 'fixture';
+      this.renderConnectionMode(mode);
+    });
+    element<HTMLInputElement>('local-no-auth').addEventListener('change', (event) => {
+      const localNoAuth = (event.currentTarget as HTMLInputElement).checked;
+      element('read-token-field').hidden = localNoAuth;
+      element('admin-token-field').hidden = localNoAuth;
     });
 
     element<HTMLFormElement>('connection-form').addEventListener('submit', (event) => {
@@ -133,6 +158,38 @@ class Dashboard {
     button('close-document').addEventListener('click', () => {
       element('document-panel').hidden = true;
     });
+    button('refresh-ingestion').addEventListener('click', () => void this.refreshIngestion());
+    element<HTMLSelectElement>('ingestion-status-filter').addEventListener('change', () => {
+      void this.refreshIngestion();
+    });
+  }
+
+  private renderConnectionMode(mode: ConnectionMode): void {
+    element('live-fields').hidden = mode !== 'live';
+    button('example-policy').hidden = mode !== 'fixture';
+  }
+
+  private restoreLiveConnection(): boolean {
+    try {
+      const saved = loadLiveConnectionPreference(window.localStorage);
+      if (!saved) return false;
+      this.mode = 'live';
+      element<HTMLSelectElement>('connection-mode').value = 'live';
+      element<HTMLInputElement>('base-url').value = saved.baseUrl;
+      element<HTMLInputElement>('local-no-auth').checked = true;
+      element('read-token-field').hidden = true;
+      element('admin-token-field').hidden = true;
+      this.renderConnectionMode('live');
+      this.api = new RetrievalApiClient({ baseUrl: saved.baseUrl, authMode: 'none' });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private startIngestionPolling(): void {
+    if (this.ingestionTimer) clearInterval(this.ingestionTimer);
+    this.ingestionTimer = setInterval(() => void this.refreshIngestion(true), 5_000);
   }
 
   private renderResearchLenses(): void {
@@ -165,49 +222,71 @@ class Dashboard {
   private async connect(): Promise<void> {
     const mode = element<HTMLSelectElement>('connection-mode').value as ConnectionMode;
     this.mode = mode;
+    let baseUrl = '';
+    let localNoAuth = false;
 
     if (mode === 'fixture') {
       this.api = new FixtureRetrievalApi();
     } else {
-      const baseUrl = element<HTMLInputElement>('base-url').value.trim();
+      baseUrl = element<HTMLInputElement>('base-url').value.trim();
+      localNoAuth = element<HTMLInputElement>('local-no-auth').checked;
       const readToken = element<HTMLInputElement>('read-token').value;
       const adminToken = element<HTMLInputElement>('admin-token').value;
-      if (!baseUrl || !readToken) {
-        this.showToast('Live 模式需要 Base URL 和 Read Token', 'error');
+      if (!baseUrl || (!localNoAuth && !readToken)) {
+        this.showToast('Live 模式需要 Base URL；启用 Token 时还需要 Read Token', 'error');
         return;
       }
       this.api = new RetrievalApiClient({
         baseUrl,
-        readToken,
-        ...(adminToken ? { adminToken } : {}),
+        authMode: localNoAuth ? 'none' : 'bearer',
+        ...(!localNoAuth && readToken ? { readToken } : {}),
+        ...(!localNoAuth && adminToken ? { adminToken } : {}),
       });
     }
 
     this.searchResponse = undefined;
     this.comparisonBaseline = undefined;
     this.lastSearchRequest = undefined;
-    await this.refreshWorkspace();
+    const connected = await this.refreshWorkspace();
+    if (!connected) return;
+    try {
+      if (this.mode === 'live' && localNoAuth) {
+        saveLiveConnectionPreference(window.localStorage, baseUrl);
+      } else {
+        clearLiveConnectionPreference(window.localStorage);
+      }
+    } catch {
+      // Storage can be unavailable in hardened browser contexts; the live connection remains usable.
+    }
+    if (this.ingestionTimer) clearInterval(this.ingestionTimer);
+    if (this.mode === 'live') this.startIngestionPolling();
   }
 
-  private async refreshWorkspace(): Promise<void> {
+  private async refreshWorkspace(): Promise<boolean> {
     this.setBusy(button('connect-button'), true, '载入中…');
     this.setConnectionState('正在连接', 'loading');
     try {
-      const [status, sources, policy] = await Promise.all([
+      const [status, sources, policy, ingestionSummary, ingestionItems] = await Promise.all([
         this.api.getStatus(),
         this.api.getSources(),
         this.api.getPolicy(),
+        this.api.getIngestionSummary(),
+        this.api.getIngestionItems({ limit: 50 }),
       ]);
       this.status = status;
       this.sources = sources.sources;
       this.policyState = policy;
       this.policyDraft = clonePolicy(policy.policy);
+      this.ingestionSummary = ingestionSummary;
+      this.ingestionItems = ingestionItems.items;
       this.renderWorkspace();
       this.setConnectionState(this.mode === 'fixture' ? 'Fixture 已就绪' : '服务已连接', 'ready');
       this.showToast(`已载入 Policy v${policy.version}`, 'success');
+      return true;
     } catch (error) {
       this.setConnectionState('连接失败', 'error');
       this.showToast(describeError(error), 'error');
+      return false;
     } finally {
       this.setBusy(button('connect-button'), false, '连接并载入');
     }
@@ -219,6 +298,133 @@ class Dashboard {
     this.renderPolicy();
     this.renderSourceFilters();
     this.renderResults();
+    this.renderIngestion();
+  }
+
+  private async refreshIngestion(silent = false): Promise<void> {
+    const refreshButton = button('refresh-ingestion');
+    if (!silent) this.setBusy(refreshButton, true, '刷新中…');
+    try {
+      const status = element<HTMLSelectElement>('ingestion-status-filter').value;
+      const [summary, items] = await Promise.all([
+        this.api.getIngestionSummary(),
+        this.api.getIngestionItems({ ...(status ? { status } : {}), limit: 50 }),
+      ]);
+      this.ingestionSummary = summary;
+      this.ingestionItems = items.items;
+      this.renderIngestion();
+    } catch (error) {
+      if (!silent) this.showToast(describeError(error), 'error');
+    } finally {
+      if (!silent) this.setBusy(refreshButton, false, '刷新状态');
+    }
+  }
+
+  private renderIngestion(): void {
+    if (!this.ingestionSummary) return;
+    const labels: Array<[keyof IngestionSummaryResponse['counts'], string]> = [
+      ['pending', '待处理'],
+      ['processing', '处理中'],
+      ['processed', '已处理'],
+      ['failed', '失败'],
+      ['retrying', '重试中'],
+    ];
+    const grid = element('ingestion-grid');
+    clear(grid);
+    for (const [key, label] of labels) {
+      const card = document.createElement('div');
+      card.className = `ingestion-metric ingestion-metric--${key}`;
+      card.append(
+        textNode('strong', '', String(this.ingestionSummary.counts[key])),
+        textNode('span', '', label),
+      );
+      grid.append(card);
+    }
+    const vector = document.createElement('div');
+    vector.className = 'ingestion-metric';
+    vector.append(
+      textNode('strong', '', String(this.ingestionSummary.vector_backlog)),
+      textNode('span', '', '向量积压'),
+    );
+    grid.append(vector);
+
+    const tbody = element<HTMLTableSectionElement>('ingestion-items');
+    clear(tbody);
+    if (this.ingestionItems.length === 0) {
+      const row = document.createElement('tr');
+      const cell = document.createElement('td');
+      cell.colSpan = 7;
+      cell.className = 'ingestion-empty';
+      cell.textContent = '当前筛选条件下没有处理记录';
+      row.append(cell);
+      tbody.append(row);
+    }
+    for (const item of this.ingestionItems) {
+      const row = document.createElement('tr');
+      const name = document.createElement('td');
+      name.append(textNode('strong', '', item.display_name), textNode('small', '', item.external_id));
+      const connector = textNode('td', '', item.connector_id);
+      const status = document.createElement('td');
+      status.append(textNode('span', `ingestion-status ingestion-status--${item.status}`, item.status));
+      const stage = textNode('td', '', item.pipeline_stage);
+      const attempts = textNode('td', '', `${item.attempt_count}/${item.max_attempts}`);
+      const timestamp = textNode('td', '', formatDate(item.finished_at ?? item.discovered_at));
+      const actions = document.createElement('td');
+      const detail = document.createElement('button');
+      detail.type = 'button';
+      detail.className = 'text-button';
+      detail.textContent = '详情';
+      detail.addEventListener('click', () => void this.openIngestionDetail(item.id));
+      actions.append(detail);
+      if (item.status === 'failed' || item.status === 'retrying') {
+        const retry = document.createElement('button');
+        retry.type = 'button';
+        retry.className = 'text-button ingestion-retry';
+        retry.textContent = '重试';
+        retry.addEventListener('click', () => void this.retryIngestion(item));
+        actions.append(retry);
+      }
+      row.append(name, connector, status, stage, attempts, timestamp, actions);
+      tbody.append(row);
+    }
+    element('ingestion-updated').textContent = `服务端状态时间：${this.ingestionSummary.as_of} · 未解决死信 ${this.ingestionSummary.unresolved_dead_letters}`;
+  }
+
+  private async openIngestionDetail(itemId: string): Promise<void> {
+    try {
+      const detail = await this.api.getIngestionItem(itemId);
+      this.renderIngestionDetail(detail);
+    } catch (error) {
+      this.showToast(describeError(error), 'error');
+    }
+  }
+
+  private renderIngestionDetail(detail: IngestionItemDetail): void {
+    const panel = element('ingestion-detail');
+    clear(panel);
+    panel.hidden = false;
+    panel.append(
+      textNode('strong', '', detail.display_name),
+      textNode('p', '', `${detail.status} · ${detail.pipeline_stage} · ${detail.connector_id}`),
+      textNode('p', '', `位置：${detail.source_locator}`),
+      textNode('p', '', `向量 generation：${detail.semantic_generation_id ?? '尚未发布'}`),
+      textNode('p', '', detail.error_code ? `错误：${detail.error_code}` : '错误：无'),
+      textNode('p', '', `状态事件 ${detail.events.length} · 执行尝试 ${detail.attempts.length}`),
+    );
+  }
+
+  private async retryIngestion(item: IngestionItemSummary): Promise<void> {
+    try {
+      await this.api.retryIngestionItem(item.id, {
+        expected_state_version: item.state_version,
+        mode: 'resume_failed_stage',
+        reason: 'Dashboard manual retry',
+      });
+      await this.refreshIngestion(true);
+      this.showToast(`${item.display_name} 已进入重试队列`, 'success');
+    } catch (error) {
+      this.showToast(describeError(error), 'error');
+    }
   }
 
   private renderStatus(): void {

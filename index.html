@@ -14,7 +14,7 @@
           <span><strong>Research Retrieval Desk</strong><small>Policy-controlled evidence search</small></span>
         </a>
         <div class="topbar-meta">
-          <span class="contract-badge">API v1.0.0</span>
+          <span class="contract-badge">API v1.1.0</span>
           <span id="connection-state" class="status-badge status-badge--idle">未连接</span>
         </div>
       </header>
@@ -36,14 +36,15 @@
         <section class="connection-card" aria-labelledby="connection-title">
           <div class="section-heading section-heading--inline">
             <div><span class="section-number">ENVIRONMENT</span><h2 id="connection-title">连接环境</h2></div>
-            <p>凭据仅保存在当前页面内存。</p>
+          <p>Token 仅保存在当前页面内存；成功的本机无 Token 连接会在刷新后自动恢复。</p>
           </div>
           <form id="connection-form" class="connection-form">
             <label class="field field--compact"><span>运行模式</span><select id="connection-mode"><option value="fixture">官方虚构 Fixture</option><option value="live">上游 HTTP 服务</option></select></label>
             <div id="live-fields" class="connection-live" hidden>
               <label class="field"><span>Base URL</span><input id="base-url" type="url" value="http://127.0.0.1:8765" autocomplete="off" /></label>
-              <label class="field"><span>Read Token</span><input id="read-token" type="password" autocomplete="off" /></label>
-              <label class="field"><span>Admin Token</span><input id="admin-token" type="password" autocomplete="off" /></label>
+              <label class="field field--compact local-auth-toggle"><span>本机模式</span><span><input id="local-no-auth" type="checkbox" checked /> 不启用 Token</span></label>
+              <label id="read-token-field" class="field" hidden><span>Read Token</span><input id="read-token" type="password" autocomplete="off" /></label>
+              <label id="admin-token-field" class="field" hidden><span>Admin Token</span><input id="admin-token" type="password" autocomplete="off" /></label>
             </div>
             <button id="connect-button" class="button button--dark" type="submit">连接并载入</button>
           </form>
@@ -60,6 +61,25 @@
             <div class="metric"><strong>—</strong><span>Sources</span></div>
             <div class="metric metric--accent"><strong>—</strong><span>Policy</span></div>
           </div>
+        </section>
+
+        <section class="panel ingestion-panel" aria-labelledby="ingestion-title">
+          <div class="section-heading section-heading--split">
+            <div><span class="section-number">INGESTION CONTROL PLANE</span><h2 id="ingestion-title">后台处理监控</h2></div>
+            <div class="ingestion-actions">
+              <label class="field field--compact"><span>状态</span><select id="ingestion-status-filter"><option value="">全部</option><option value="pending">待处理</option><option value="processing">处理中</option><option value="processed">已处理</option><option value="failed">失败</option><option value="retrying">重试中</option></select></label>
+              <button id="refresh-ingestion" class="button button--ghost" type="button">刷新状态</button>
+            </div>
+          </div>
+          <div id="ingestion-grid" class="ingestion-grid" aria-live="polite"></div>
+          <div class="ingestion-table-wrap">
+            <table class="ingestion-table">
+              <thead><tr><th>数据</th><th>Connector</th><th>状态</th><th>阶段</th><th>尝试</th><th>时间</th><th>操作</th></tr></thead>
+              <tbody id="ingestion-items"></tbody>
+            </table>
+          </div>
+          <div id="ingestion-detail" class="ingestion-detail" hidden></div>
+          <p id="ingestion-updated" class="field-help">等待状态载入</p>
         </section>
 
         <div class="workspace">

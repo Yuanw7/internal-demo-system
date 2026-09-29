@@ -4,6 +4,7 @@ import { constants } from 'node:fs';
 const requiredFiles = [
   'MISSION.md',
   'ROADMAP.md',
+  'docs/VERSION_ITERATION_LOG.md',
   'AGENTS.md',
   'docs/ARCHITECTURE.md',
   'docs/ENGINEERING_STANDARDS.md',
@@ -13,6 +14,7 @@ const requiredFiles = [
   'docs/evaluation/BASELINE.md',
   'docs/contracts/README.md',
   'docs/contracts/openapi.json',
+  'docs/contracts/archive/openapi-1.0.0.json',
   'docs/contracts/examples.json',
   'docs/upstream/MCP_ARCHITECTURE.md',
   'docs/upstream/DASHBOARD_HANDOFF.md',
@@ -35,11 +37,19 @@ const requiredFiles = [
   'src/evaluation/token-metrics.ts',
   'src/evaluation/tool-schemas.ts',
   'test/evaluation.test.ts',
+  'backend/pyproject.toml',
+  'backend/src/research_hub/service.py',
+  'backend/src/research_hub/mcp_server.py',
+  'backend/tests/test_contract.py',
 ];
 
 const requiredPaths = [
   '/healthz',
   '/api/status',
+  '/api/ingestion/summary',
+  '/api/ingestion/items',
+  '/api/ingestion/items/{item_id}',
+  '/api/ingestion/items/{item_id}/retry',
   '/api/sources',
   '/api/search',
   '/api/documents/{document_id}',
@@ -54,6 +64,11 @@ const requiredSchemas = [
   'SearchResponse',
   'SearchHit',
   'MCPFetchResult',
+  'IngestionSummaryResponse',
+  'IngestionItemsResponse',
+  'IngestionItemDetail',
+  'RetryIngestionRequest',
+  'RetryIngestionResponse',
   'ErrorResponse',
 ];
 
@@ -79,7 +94,7 @@ const openapi = JSON.parse(await readFile('docs/contracts/openapi.json', 'utf8')
 const examples = JSON.parse(await readFile('docs/contracts/examples.json', 'utf8'));
 
 assert(openapi.openapi === '3.1.0', `Expected OpenAPI 3.1.0, got ${openapi.openapi}`);
-assert(openapi.info?.version === '1.0.0', `Expected API 1.0.0, got ${openapi.info?.version}`);
+assert(openapi.info?.version === '1.1.0', `Expected API 1.1.0, got ${openapi.info?.version}`);
 
 for (const path of requiredPaths) {
   assert(openapi.paths?.[path], `Missing required OpenAPI path: ${path}`);

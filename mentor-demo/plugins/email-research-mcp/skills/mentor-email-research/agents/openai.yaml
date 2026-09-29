@@ -1,0 +1,4 @@
+interface:
+  display_name: "Mentor Email Research"
+  short_description: "Use local MCP evidence to analyze research email safely"
+  default_prompt: "Use $mentor-email-research to analyze my imported research emails with citations."

@@ -4,6 +4,7 @@ export {
   MissingCredentialError,
   RetrievalApiClient,
   type FetchLike,
+  type IngestionItemFilters,
   type RetrievalApi,
   type RetrievalApiClientOptions,
 } from './client.ts';

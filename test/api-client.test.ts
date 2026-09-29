@@ -18,6 +18,21 @@ function jsonResponse(payload: unknown, status = 200): Response {
   });
 }
 
+test('client preserves the receiver required by browser fetch', async () => {
+  let receiver: unknown;
+  const fetchFn = function (this: unknown): Promise<Response> {
+    receiver = this;
+    return Promise.resolve(jsonResponse({ documents: 2, chunks: 2, sources: 2, policy_version: 1 }));
+  };
+  const client = new RetrievalApiClient({
+    baseUrl: 'http://example.test',
+    readToken: 'read-token',
+    fetchFn,
+  });
+  await client.getStatus();
+  assert.equal(receiver, globalThis);
+});
+
 test('client uses one contract-shaped boundary and the correct credentials', async () => {
   const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
   const responses = [
@@ -109,4 +124,103 @@ test('client refuses policy mutation without an admin credential', async () => {
     client.updatePolicy(structuredClone(contractExamples.policy_update_request)),
     MissingCredentialError,
   );
+});
+
+test('local no-auth client omits authorization for read and admin requests', async () => {
+  const calls: RequestInit[] = [];
+  const responses = [
+    { documents: 2, chunks: 2, sources: 2, policy_version: 1 },
+    contractExamples.policy_update_response,
+  ];
+  const client = new RetrievalApiClient({
+    baseUrl: 'http://127.0.0.1:8765',
+    authMode: 'none',
+    fetchFn: async (_input, init) => {
+      calls.push(init ?? {});
+      const response = responses.shift();
+      assert.ok(response);
+      return jsonResponse(response);
+    },
+  });
+
+  await client.getStatus();
+  await client.updatePolicy(structuredClone(contractExamples.policy_update_request));
+  assert.equal((calls[0]?.headers as Record<string, string>).Authorization, undefined);
+  assert.equal((calls[1]?.headers as Record<string, string>).Authorization, undefined);
+});
+
+test('ingestion monitoring reads with read token and retries with admin token', async () => {
+  const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
+  const item = {
+    id: 'item-1',
+    connector_id: 'capital_iq_folder',
+    external_id: 'fictional.pdf',
+    display_name: 'fictional.pdf',
+    status: 'failed',
+    pipeline_stage: 'parse',
+    outcome: '',
+    attempt_count: 1,
+    max_attempts: 3,
+    discovered_at: '2026-09-29T00:00:00+00:00',
+    started_at: '2026-09-29T00:00:01+00:00',
+    searchable_at: null,
+    finished_at: '2026-09-29T00:00:02+00:00',
+    error_code: 'pdf_parse_failed',
+    state_version: 3,
+  } as const;
+  const responses = [
+    {
+      as_of: '2026-09-29T00:00:03+00:00',
+      counts: { pending: 0, processing: 0, processed: 0, failed: 1, retrying: 0 },
+      vector_backlog: 0,
+      unresolved_dead_letters: 1,
+      oldest_pending_age_seconds: null,
+    },
+    { items: [item], next_cursor: null },
+    {
+      ...item,
+      source_locator: 'fictional.pdf',
+      content_fingerprint: 'fixture-sha',
+      pipeline_version: 'fixture-v1',
+      semantic_required: true,
+      semantic_generation_id: null,
+      input_bytes: 12,
+      duration_ms: 1000,
+      error_class: 'data',
+      error_message: 'fixture',
+      document_ids: [],
+      attempts: [],
+      events: [],
+    },
+    {
+      item_id: 'item-1',
+      status: 'retrying',
+      next_attempt_at: '2026-09-29T00:00:04+00:00',
+      state_version: 4,
+    },
+  ];
+  const client = new RetrievalApiClient({
+    baseUrl: 'http://example.test',
+    readToken: 'read-token',
+    adminToken: 'admin-token',
+    fetchFn: async (input, init) => {
+      calls.push({ url: String(input), init });
+      const response = responses.shift();
+      assert.ok(response);
+      return jsonResponse(response);
+    },
+  });
+
+  await client.getIngestionSummary();
+  await client.getIngestionItems({ status: 'failed', limit: 50 });
+  await client.getIngestionItem('item-1');
+  await client.retryIngestionItem('item-1', {
+    expected_state_version: 3,
+    mode: 'restart',
+    reason: 'fixture repair',
+  });
+
+  assert.equal(calls[1]?.url, 'http://example.test/api/ingestion/items?status=failed&limit=50');
+  assert.equal((calls[0]?.init?.headers as Record<string, string>).Authorization, 'Bearer read-token');
+  assert.equal((calls[3]?.init?.headers as Record<string, string>).Authorization, 'Bearer admin-token');
 });

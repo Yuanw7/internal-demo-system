@@ -1,7 +1,7 @@
 {
   "name": "mcp-retrieval-policy-demo",
-  "version": "1.0.0",
-  "description": "Retrieval Policy dashboard, evaluation, and MCP integration demo",
+  "version": "0.2.0-dev.0",
+  "description": "Local research Retrieval Hub, MCP server, policy dashboard, and evaluation",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
@@ -19,7 +19,8 @@
     "check:foundation": "node scripts/validate-foundation.mjs",
     "typecheck": "tsc --noEmit",
     "test:unit": "node --experimental-strip-types --test test/*.test.ts",
-    "test": "npm run check:foundation && npm run check:generated && npm run check:evaluation && npm run typecheck && npm run test:unit && vite build"
+    "test:backend": "node scripts/run-backend-tests.mjs",
+    "test": "npm run check:foundation && npm run check:generated && npm run check:evaluation && npm run typecheck && npm run test:unit && npm run test:backend && vite build"
   },
   "engines": {
     "node": ">=22.18"

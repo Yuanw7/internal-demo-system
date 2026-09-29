@@ -1,229 +1,305 @@
-# MCP + Retrieval Policy Demo
+# Internal Research MCP
 
-本仓库负责在既有 MCP / 检索服务契约之上完成 Retrieval Policy 的配置体验、效果评测与 token 观测。
+本项目把版本化本地资料库、Retrieval Policy、HTTP API、只读 MCP Server 和买方研究 Dashboard 放在同一个仓库中。目标是让 Codex/ChatGPT 先搜索和读取授权资料，再基于可定位的原文证据完成分析判断。
 
-当前状态：**本地 Demo 与阶段 F 交付已完成；阶段 E 真实 MCP / ChatGPT 验收等待外部环境**。项目不接触系统原始内容文件，也不在前端复制检索排序逻辑。
+当前开发版本：`0.2.0-dev`。真实研报、Token、运行数据库和模型文件不得提交到 Git。
 
-## 最快打开 Dashboard
-
-环境要求：Node.js 22.18 或更高版本。
-
-```bash
-git clone git@github.com:Yuanw7/internal-demo-system.git
-cd internal-demo-system
-npm install
-npm run demo
-```
-
-终端会显示类似下面的临时地址：
+## 架构
 
 ```text
-Local:   http://localhost:xxxxx/
-Network: http://192.168.x.x:xxxxx/
+仓库外文件 → 解析/版本/page/chunk → FTS5 ─┐
+                                  dense vectors ─┼→ hybrid ranking
+                                  concept config ┘       ├→ HTTP → Dashboard
+                                                        └→ MCP → Codex/ChatGPT
 ```
 
-- 本机浏览器打开 `Local` 地址。
-- 同一受信任局域网内的其他设备打开 `Network` 地址。
-- 页面默认使用“官方虚构 Fixture”，无需上游服务和 Token；点击“检索证据”即可测试。
-- 测试结束在终端按 `Ctrl+C`。该命令不会创建公网入口或常驻服务。
+MCP 只提供证据，不提供 `analyze` 或 `investment_decision` 工具。Codex/ChatGPT 负责比较资料、识别冲突并形成判断，同时区分文档事实、模型推断和信息缺口。
 
-若只允许本机访问，运行 `npm run dev`。验收生产构建时运行：
+## 环境要求
 
-```bash
-npm run build
-npm run preview:lan
-```
+- Node.js 22.18+
+- Python 3.11+
+- macOS/Linux；Windows 使用 `.venv\Scripts\python.exe` 替换示例中的 Python 路径
 
-## 两个部分如何接在一起
-
-### 责任边界
-
-| 部分 | 负责人 | 主要职责 |
-|---|---|---|
-| A：Retrieval Hub | 上游同事 | PDF 基础处理、分块和索引；统一检索/ranking；HTTP API；MCP `search`、`fetch`、`search_documents`；ChatGPT MCP 接入与引用 |
-| B：本仓库 | Dashboard | 查看数据源与索引状态；编辑 Retrieval Policy；发送带 metadata/时间/来源过滤的查询；展示服务端顺序、分数、版本和正文 |
-
-两部分必须共用 A 的同一个 Hub、数据库和 `PolicyState`。Dashboard 通过 HTTP 更新 Policy；下一次 HTTP 和 MCP 查询都由 A 的统一检索逻辑读取新版本。MCP tools 保持只读，Dashboard 不计算或修改服务端排序。
-
-```text
-PDF → A: 解析/分块/索引 → Hub ranking ─┬→ HTTP API → B: Dashboard
-                                        └→ MCP Server → ChatGPT
-                         PolicyState ← HTTP PUT /api/policy
-```
-
-接口事实来源是 [OpenAPI 1.0.0](docs/contracts/openapi.json)，示例数据在 [examples.json](docs/contracts/examples.json)。如果 A 修改字段、路径或错误码，应重新导出完整 OpenAPI 交付包，再在本仓库运行 `npm test`；不要只在两边口头约定字段。
-
-### 1. A 启动 PDF、索引、HTTP 与 MCP
-
-以下命令在 **A 的 Retrieval Hub/Python 仓库**运行，不是在本 Dashboard 仓库运行。具体实现交接见 [上游 Dashboard handoff](docs/upstream/DASHBOARD_HANDOFF.md)。
-
-macOS/Linux 示例：
-
-```bash
-python3.11 -m venv .venv
-.venv/bin/python -m pip install -e '.[dev,mcp]'
-.venv/bin/python -m research_agent.hub_cli demo
-
-export RESEARCH_HUB_READ_TOKEN="$(.venv/bin/python -c 'import secrets; print(secrets.token_urlsafe(32))')"
-export RESEARCH_HUB_ADMIN_TOKEN="$(.venv/bin/python -c 'import secrets; print(secrets.token_urlsafe(32))')"
-.venv/bin/python -m research_agent.hub_cli serve --cors-origin http://localhost:5173
-```
-
-导入允许使用的 PDF 目录：
-
-```bash
-.venv/bin/python -m research_agent.hub_cli ingest /absolute/path/to/inbox \
-  --source-id capital_iq \
-  --source-name "Capital IQ"
-```
-
-当前 LocalFilesAdapter 支持有文本层的 PDF；扫描件/OCR、增量同步、失败重试和真实数据权限仍由 A 负责。不要把原始 PDF、Token 或真实正文提交到本仓库。
-
-默认 HTTP 地址为 `http://127.0.0.1:8765`，接口文档为 `http://127.0.0.1:8765/docs`。若 Dashboard 实际地址不是 `http://localhost:5173`，A 必须把 `--cors-origin` 改为终端显示的精确 Dashboard Origin，例如 `http://127.0.0.1:5173`；协议、主机和端口必须全部匹配。
-
-本地 MCP stdio 的启动配置使用 Python 绝对路径，核心命令为：
-
-```bash
-/absolute/path/to/.venv/bin/python -m research_agent.hub_cli \
-  --data-dir /absolute/path/to/data/hub stdio
-```
-
-HTTP MCP 地址为 `<Hub Base URL>/mcp`，使用 Read Token。`--data-dir`、`--base-url` 等全局参数必须放在 `stdio`/`serve` 子命令之前。
-
-### 2. B 启动并连接 Dashboard
-
-在本仓库运行：
+## 一次性安装
 
 ```bash
 npm install
+python3 -m venv backend/.venv
+backend/.venv/bin/pip install -e 'backend[dev]'
+```
+
+所有 Python 依赖只安装到 `backend/.venv`。
+
+需要真实语义检索时再安装本地 embedding 依赖：
+
+```bash
+backend/.venv/bin/pip install -e 'backend[semantic]'
+```
+
+## 启动完整本地 Demo
+
+### 1. 初始化 Hub
+
+```bash
+backend/.venv/bin/research-hub --data-dir backend/data/hub init
+backend/.venv/bin/research-hub --data-dir backend/data/hub demo
+```
+
+`init` 创建两个本地 Token，并生成：
+
+- `backend/data/hub/access.local.json`
+- `backend/data/hub/codex-mcp.local.toml`
+
+两者均已被 Git 忽略。不要把内容复制到 issue、日志或提交中。
+
+### 2. 启动 HTTP + Streamable HTTP MCP
+
+本机单人 Demo 可显式关闭 HTTP Bearer 校验；认证实现仍保留，且服务仍只绑定 `127.0.0.1`：
+
+```bash
+backend/.venv/bin/research-hub \
+  --data-dir backend/data/hub \
+  serve --port 8765 --cors-origin http://127.0.0.1:5173 --local-no-auth
+```
+
+需要恢复 Token 校验时，去掉 `--local-no-auth`，使用原命令：
+
+```bash
+backend/.venv/bin/research-hub \
+  --data-dir backend/data/hub \
+  serve --port 8765 --cors-origin http://127.0.0.1:5173
+```
+
+可用地址：
+
+- Health：`http://127.0.0.1:8765/healthz`
+- OpenAPI：`http://127.0.0.1:8765/docs`
+- MCP：`http://127.0.0.1:8765/mcp`
+
+### 3. 打开 Dashboard
+
+新终端运行：
+
+```bash
 npm run dev
 ```
 
-浏览器打开终端显示的地址，然后：
+打开 Vite 显示的地址，通常是 `http://127.0.0.1:5173`。页面默认使用虚构 fixture；切换到 Live/上游 HTTP 模式后填写：
 
-1. 在“连接环境”把“运行模式”改为“上游 HTTP 服务”。
-2. Base URL 填 A 提供的地址，默认是 `http://127.0.0.1:8765`。
-3. Read Token 必填，用于状态、来源、搜索、正文和读取 Policy。
-4. Admin Token 可选；只有保存 Retrieval Policy 时需要。
-5. 点击“连接并载入”。顶部显示“服务已连接”后即可查询。
+- Base URL：`http://127.0.0.1:8765`
+- 本机无认证 Demo：保持“不启用 Token”勾选；
+- Bearer 模式：取消勾选，再填写 `access.local.json` 中的 Read Token；保存 Retrieval Policy 时还需 Admin Token。
 
-Token 只保存在当前页面内存，不写入 localStorage 或构建产物。当前浏览器直连 Admin Token 只适合受控本地演示；生产环境应由 Dashboard 服务端代理持有凭据。
+`--local-no-auth` 只用于本机临时验证，不能与公网 tunnel、非回环监听或共享机器部署组合。浏览器中的 Token 也只适合受控本地演示；生产形态必须使用服务端代理或正式认证。
 
-跨设备测试时，Dashboard 和 Hub 都必须监听局域网可达地址，Base URL 不能填另一台设备上的 `127.0.0.1`，A 还需允许 Dashboard 的精确 CORS Origin。
+## 导入仓库外资料
 
-### 3. 让 ChatGPT 通过 MCP 搜索、读取和引用
-
-在目标 ChatGPT/Codex MCP 客户端中配置 A 的 stdio 命令或可达的 HTTP `/mcp` 地址。连接成功后应能看到：
-
-- `search({query})`：返回轻量 `id/title/url`，用于发现候选文档；
-- `fetch({id})`：读取最终需要引用的少量完整文档；
-- `search_documents({request})`：高级诊断工具，输入与 `POST /api/search` 一致并返回 `policy_version` 与评分明细。
-
-推荐调用顺序是 `search → 选择少量结果 → fetch → 基于返回 URL 引用`。不要对所有候选都执行完整 fetch。远程 ChatGPT 无法访问 `127.0.0.1`；远程验收需要受控可达地址、认证和可访问的引用 URL，不能把公网 tunnel 或 Token 提交到 Git。
-
-### 4. 两人联调验收
-
-1. A 导入虚构或获准使用的 PDF，确认 `/api/status` 中 document/chunk/source 数量正确。
-2. B 在 Live 模式执行固定查询，记录结果 ID 顺序和 `policy_version`。
-3. B 修改来源权重或新鲜度，使用最新 `expected_version` 保存，再执行同一查询。
-4. 确认 Dashboard 展示的是新的服务端顺序和分数组成，没有客户端重排。
-5. ChatGPT 通过 MCP 执行同一查询；高级工具应与 HTTP 的结果顺序和 Policy 版本一致。
-6. 对最终结果执行 `fetch`，确认 ID 来自 search、正文是纯文本、引用 URL 可达。
-7. 记录 PDF 解析、弱相关公司名命中、OCR、长文 token、CORS、认证和引用可达性等问题。
-
-可先运行只读 HTTP 检查：
+先创建数据源，再导入文件或目录：
 
 ```bash
-export RESEARCH_HUB_BASE_URL=http://127.0.0.1:8765
-export RESEARCH_HUB_READ_TOKEN='<read token>'
-export RESEARCH_HUB_LIVE_QUERY='芯片'
-npm --silent run check:live > /tmp/retrieval-http.json
+backend/.venv/bin/research-hub --data-dir backend/data/hub \
+  source --id local_research --name 'Local Research' --kind local
+
+backend/.venv/bin/research-hub --data-dir backend/data/hub \
+  ingest /absolute/path/to/authorized/files \
+  --source-id local_research --source-name 'Local Research'
 ```
 
-取得同一次真实 MCP 搜索结果后比较顺序：
+支持 TXT、Markdown、JSON、JSONL、EML、有文本层的 PDF，以及直接读取包含这些格式的 ZIP；ZIP 条目不会先解压到仓库。RAR 暂不作为原生容器支持，需先在受控临时目录解包。扫描 PDF 会报告解析失败/OCR required；本阶段不会静默调用外部 OCR。重复导入同一内容为 `unchanged`，内容变化会创建不可变 `document_version`。大型目录或 ZIP 会按文档数和正文字符数自动分批写入。
+
+真实 Capital IQ 抽样验收记录见 [`docs/memos/REAL_DATA_ACCEPTANCE_2026-09-24.md`](docs/memos/REAL_DATA_ACCEPTANCE_2026-09-24.md)。原始归档、抽取正文、运行数据库和凭据均不得提交到 Git。
+
+导入或更新文档后构建本地 dense-vector 索引：
 
 ```bash
-npm run check:mcp-parity -- /tmp/retrieval-http.json /tmp/retrieval-mcp.json
+backend/.venv/bin/research-hub --data-dir backend/data/hub semantic-build
+backend/.venv/bin/research-hub --data-dir backend/data/hub semantic-status
 ```
 
-完整真实验收条件和记录模板见 [外部验收备忘录](docs/memos/EXTERNAL_ACCEPTANCE.md) 与 [MCP Live 模板](docs/evaluation/MCP_LIVE_TEMPLATE.md)。
+公开多语模型只在首次构建时下载；文档、chunk 和生成向量不离开本机。索引与当前 chunk 数量/最大 ID 不一致时，查询自动退回概念增强的 FTS，不会使用陈旧向量。
 
-## 常见接线问题
+## 连接 Codex MCP
 
-- **Dashboard 显示连接失败**：先检查 Hub `/healthz`、Read Token，以及浏览器控制台中的 CORS 错误。
-- **能搜索但不能保存 Policy**：缺少 Admin Token，或保存期间发生 409 版本冲突；重新读取后人工核对，禁止自动覆盖。
-- **ChatGPT 看不到文档**：确认 MCP 进程使用和 HTTP 服务相同的 `--data-dir`，并检查来源是否启用。
-- **Dashboard 与 MCP 排序不同**：固定相同 query/filters，核对是否使用同一个数据库与 Policy 版本；标准 `search` 不返回 `policy_version`，需要 `search_documents` 做精确对比。
-- **本机可用、远程引用打不开**：`127.0.0.1` 只属于调用方自己；需要受控可达的 Hub 和引用 URL。
-- **自然语言查询无结果**：当前 FTS 面向关键词且要求查询词项出现，先用短关键词建立基线。
-- **长 PDF 占用过多上下文**：标准 `fetch` 返回完整正文，不能由 Dashboard 静默截断；应向 A 提出 passage/range fetch 契约方案。
+打开 `backend/data/hub/codex-mcp.local.toml`，将其中配置复制到本机 Codex 的 `~/.codex/config.toml`。也可以直接运行（路径按实际仓库位置替换）：
 
-## 项目导航
+```bash
+codex mcp add internalResearch -- \
+  '/absolute/path/backend/.venv/bin/python' -m research_hub.cli \
+  --data-dir '/absolute/path/backend/data/hub' stdio
+```
 
-- [MISSION.md](MISSION.md)：目标、范围和完成定义
-- [ROADMAP.md](ROADMAP.md)：阶段划分、依赖和退出条件
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)：整合第一部分接口后的系统架构
-- [docs/ENGINEERING_STANDARDS.md](docs/ENGINEERING_STANDARDS.md)：后续 coding 统一约定
-- [docs/contracts/README.md](docs/contracts/README.md)：接口契约来源、优先级和变更流程
-- [docs/PHASE_A_REPORT.md](docs/PHASE_A_REPORT.md)：阶段 A 交付与风险登记
-- [docs/PHASE_B_REPORT.md](docs/PHASE_B_REPORT.md)：阶段 B 实现、测试与限制
-- [docs/PHASE_C_REPORT.md](docs/PHASE_C_REPORT.md)：阶段 C Dashboard 与浏览器验收
-- [docs/PHASE_UI_REPORT.md](docs/PHASE_UI_REPORT.md)：买方分析师工作台优化进度与验收
-- [docs/PHASE_D_REPORT.md](docs/PHASE_D_REPORT.md)：阶段 D 策略实验、token 基线与限制
-- [docs/PHASE_E_REPORT.md](docs/PHASE_E_REPORT.md)：真实 HTTP/MCP 联调状态与只读检查
-- [docs/DELIVERY.md](docs/DELIVERY.md)：可运行 Demo、架构、MCP、ranking、问题与扩展结论
-- [docs/memos/DATA_ENGINEERING_AND_SCALE.md](docs/memos/DATA_ENGINEERING_AND_SCALE.md)：真实 PDF 与规模化后续备忘录
-- [docs/memos/EXTERNAL_ACCEPTANCE.md](docs/memos/EXTERNAL_ACCEPTANCE.md)：真实 HTTP/MCP/PDF 验收的前置条件与执行清单
-- [docs/evaluation/BASELINE.md](docs/evaluation/BASELINE.md)：可重复生成的评测结果
-- [docs/evaluation/MCP_LIVE_TEMPLATE.md](docs/evaluation/MCP_LIVE_TEMPLATE.md)：真实 MCP 联调证据模板
-- [.agents/skills/mcp-retrieval-demo/SKILL.md](.agents/skills/mcp-retrieval-demo/SKILL.md)：项目级 Codex Skill
+上面的 `backend/data/hub` 是初始化/样例库。已经完成真实资料索引时，应使用独立名称指向实际索引目录，避免 Prompt 误调用空的样例库：
 
-## 基线校验
+```bash
+codex mcp add internalResearchReal -- \
+  '/absolute/path/backend/.venv/bin/python' -m research_hub.cli \
+  --data-dir '/absolute/path/backend/data/real-test' stdio
+```
+
+然后确认服务器出现在列表中：
+
+```bash
+codex mcp list
+codex mcp get internalResearchReal
+```
+
+生成的 stdio 配置使用当前虚拟环境 Python和绝对数据目录。若移动仓库，应重新注册。注册后新开 Codex 会话，让工具清单重新发现；Prompt 中明确写“仅使用 `internalResearchReal` MCP”。
+
+建议在新 Codex 会话中测试：
+
+```text
+请先搜索“芯片需求”，读取最相关的两份资料，然后：
+1. 分别列出文档明确陈述的事实；
+2. 比较观点差异；
+3. 给出你的分析判断；
+4. 标注哪些是推断、哪些信息仍缺失；
+5. 引用返回的文档 URL 和页码/字符范围。
+```
+
+预期工具顺序是 `search_documents → fetch → 分析回答`。标准 `search` 用于低 token 候选发现。
+
+## 连接 ChatGPT
+
+ChatGPT 不能直接访问宿主机的 `127.0.0.1`。按照当前 [OpenAI MCP Server 文档](https://developers.openai.com/plugins/build/mcp-server) 和 [ChatGPT 连接流程](https://developers.openai.com/plugins/deploy/connect-chatgpt)，开发者模式需要以下之一：
+
+- 可达的 HTTPS Streamable HTTP MCP endpoint，通常以 `/mcp` 结尾；或
+- [Secure MCP Tunnel](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels)，把私有 stdio/HTTP MCP 安全转发给 ChatGPT。
+
+本仓库不自动创建公网入口，也不保存 tunnel ID。账户 Developer mode、workspace policy、认证和引用 URL 可达性到位后，再按 `docs/memos/EXTERNAL_ACCEPTANCE.md` 执行阶段 K 验收。
+
+## MCP tools
+
+| Tool | 用途 |
+|---|---|
+| `search(query)` | 使用当前 Policy 返回轻量 `id/title/url` 候选 |
+| `fetch(id)` | 读取搜索结果对应的当前完整原文与 citation metadata |
+| `search_documents(request)` | 使用 source/date/metadata filter，返回 snippet、score details 和 `policy_version` |
+
+三个工具全部只读。来源、入库、删除和 Policy 写入只允许通过受管理 Token 保护的 HTTP/CLI 完成。
+
+## 检索与排序
+
+短句先由版本化投研概念配置识别公司、产品和产业链概念，再并行执行 FTS5 与本地 dense-vector 召回。两路候选在文档级用 Reciprocal Rank Fusion（RRF）融合，完全相同正文只保留得分最高的代表项，最后再应用来源与时间策略：
+
+```text
+hybrid_relevance = 60 / (60 + lexical_rank) + 40 / (60 + semantic_rank)
+freshness = 0.5 ^ (age_days / half_life_days)
+score = hybrid_relevance × source_weight × (1 + recency_boost × freshness)
+```
+
+Dashboard 只显示服务端顺序和 `score_details`，不会重新排序。`score` 只能在一次查询内比较，不是概率或事实置信度。
+
+### 信息源 Ranking V0
+
+V0 提供一个只含虚构来源的版本化 Priority 1–4 目录，并验证 canonical name/显式 alias、唯一主信息源及 Policy 更新后的下一次检索重排。它不连接邮箱，也不改变 MCP schema。
+
+运行独立验收：
+
+```bash
+backend/.venv/bin/python backend/scripts/check_source_ranking_v0.py
+```
+
+创建一个不影响现有 Hub 的可运行虚构 V0 数据库：
+
+```bash
+backend/.venv/bin/research-hub \
+  --data-dir backend/data/source-ranking-v0 \
+  source-ranking-demo
+```
+
+如需从 Codex 交互测试，应把该独立目录注册成另一个 MCP 名称；不要覆盖当前 `internalResearch`，直到 V0 验收完成。
+
+真实来源名单、多来源 attribution 和邮箱全量批次不能用 V0 结果替代；下面的 V1 只完成虚构持久化与批次完整性基线。
+
+### 信息源 Ranking V1
+
+V1 在独立 SQLite 数据库中持久化信息源、alias、document version attribution 和三文件夹邮件同步批次。它仍只使用虚构 EML/JSON，不连接真实账户。
+
+```bash
+backend/.venv/bin/research-hub \
+  --data-dir backend/data/source-ranking-v1 \
+  source-ranking-v1-demo
+
+backend/.venv/bin/python backend/scripts/check_source_ranking_v1.py
+```
+
+同步后的主信息源会通过现有 `/api/sources` 出现在 Live Dashboard，并继续使用 `expected_version` 保存权重。alias 和批次详情暂不在 UI/MCP 暴露。
+
+## 测试
 
 ```bash
 npm test
 ```
 
-该命令执行地基校验、生成物漂移检查、TypeScript 严格类型检查和单元测试；不连接服务、不访问网络、不处理文档原文。
+该命令运行：
 
-## Dashboard 的其他启动方式
+- 契约/生成物/评测漂移检查；
+- TypeScript 类型检查和 Dashboard 单元测试；
+- Python migration、版本化、解析、检索、Policy、HTTP 和 MCP 测试；
+- Vite 生产构建。
 
-```bash
-npm run dev
-```
-
-默认使用官方虚构 fixture，无需 Token。切换到上游 HTTP 服务时，Token 只保存在当前页面内存中。
-
-### 局域网临时验收
+单独运行后端测试：
 
 ```bash
-npm run demo
+backend/.venv/bin/python -m pytest -q -c backend/pyproject.toml backend/tests
 ```
 
-Vite 会监听所有本机网络接口、由系统分配一个临时可用端口，并显示 `Network` 访问地址。用同一局域网内另一台设备打开该地址，即可先在 fixture 模式验收完整 Dashboard，不需要上游服务或凭据。
+## Capital IQ 后台监听（阶段 P）
 
-`npm run demo` 与 `npm run dev:lan` 等价。这条命令只适合受信任局域网内的临时测试，结束后按 `Ctrl+C` 停止。不要配置路由器端口转发或公网 tunnel。若要测试构建产物，可先执行 `npm run build`，再执行 `npm run preview:lan`。
-
-Live 模式跨设备测试还需满足两点：上游服务可通过宿主机局域网地址访问，并允许 Dashboard 的精确 Origin。浏览器运行在另一台设备时，Base URL 不能使用 `127.0.0.1`。在确认上游监听参数前，本仓库不猜测或修改其启动方式。
-
-后续部署选项记录在 [`docs/memos/DEPLOYMENT_OPTIONS.md`](docs/memos/DEPLOYMENT_OPTIONS.md)，不进入当前实现。
-
-## 运行评测
+安装本地 semantic extra 后，可用同一个进程轮询目录、幂等导入、构建 dense-vector generation，并在向量发布后把 item 标为 `processed`：
 
 ```bash
-npm run evaluate
+backend/.venv/bin/pip install -e 'backend[semantic]'
+
+backend/.venv/bin/research-hub \
+  --data-dir backend/data/automated-local \
+  watch-folder '/absolute/path/to/Capital IQ Data' \
+  --connector-id capital_iq_folder \
+  --connector-name 'Capital IQ Folder' \
+  --source-id capital_iq \
+  --source-name 'Capital IQ' \
+  --settle-seconds 5 \
+  --max-queue-depth 1000 \
+  --interval-seconds 15
 ```
 
-输出机器可读 JSON 与 Markdown 基线。评测只消费契约 fixture，不会调用模型或修改真实服务。
+这些数字是可覆盖的本地演示参数，不是生产 SLA 或容量承诺。单轮验证可增加 `--once`；启用稳定窗口时，新文件需要至少两次扫描才能进入队列。扫描 checkpoint、`size + mtime` 稳定性、内容哈希、队列背压、worker heartbeat 和删除 observation 都会持久化。原始文件不移动、不删除；同一路径内容变化会形成新的不可变 document version，源文件删除也不会清除历史证据。
 
-## Live HTTP 只读检查
-
-上游服务与 Read Token 就绪后，按照 [阶段 E 报告](docs/PHASE_E_REPORT.md) 配置环境变量并运行：
+无 Outlook 账号时，可运行完全虚构的 delta/附件闭环：
 
 ```bash
-npm run check:live
+backend/.venv/bin/research-hub \
+  --data-dir backend/data/outlook-fixture-local \
+  outlook-fixture-demo
 ```
 
-该命令不会修改策略或导入数据；真实 MCP 一致性仍要求当前环境已经配置对应 MCP Server。
+该命令不联网、不读取真实邮箱，验证两页 delta、checkpoint、正文/附件父子 item、V1 来源 alias 归因和向量发布。`OutlookDeltaClient` 与 `OCRAdapter` 已定义为可替换边界；扫描 PDF 未配置 OCR 时会阻止整封邮件进入 `processed`，测试 OCR 只用于自动化状态验证。
 
-取得实际 MCP 搜索结果后，可按阶段 E 报告运行 `npm run check:mcp-parity -- <http.json> <mcp.json>`，自动比较结果 ID、顺序及可用的 Policy 版本。
+启动 HTTP 和 Dashboard 后，新增的“后台处理监控”显示待处理、处理中、已处理、失败、重试中和向量积压。监控 API 属于 OpenAPI 1.1.0；MCP 仍只有三个只读工具。
+
+对已经建立、但早于 ingestion control-plane 的索引，Dashboard 可以立即做研究检索，但监控计数不会自动伪造为“已处理”。如需把历史导入映射到五态状态机，应执行单独的可审计 backfill；当前版本不根据文档表反推处理事件。
+
+真实 Outlook 登录、Graph delta/附件下载和生产 OCR 尚未执行，需要账号授权与 OCR 选型后完成阶段 P3。
+
+## 项目导航
+
+- [MISSION.md](MISSION.md)：最终产品目标与完成定义
+- [ROADMAP.md](ROADMAP.md)：阶段 A–P 和退出条件
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)：统一后端、HTTP、MCP 与 Dashboard 架构
+- [docs/VERSION_ITERATION_LOG.md](docs/VERSION_ITERATION_LOG.md)：版本目标和决策变化
+- [本地补全方案](docs/memos/FIRST_PART_LOCAL_COMPLETION_PLAN.md)：禁止项、Git 版本差异与实施计划
+- [外部验收条件](docs/memos/EXTERNAL_ACCEPTANCE.md)：ChatGPT/真实资料验收门槛
+- [MCP V0 信息源 Ranking](docs/memos/MCP_V0_SOURCE_RANKING.md)：虚构来源目录、解析与重排证据
+- [MCP V1 邮件信息源 Ranking](docs/memos/MCP_V1_EMAIL_SOURCE_RANKING.md)：持久化归因、批次完整性与 MCP 重排
+- [自动监听实施基线](docs/memos/AUTOMATED_INGESTION_MONITORING_PLAN.md)：状态口径、实施顺序和后续待办
+- [API 契约](docs/contracts/openapi.json)：当前机器可读 API 1.1.0
+
+## 当前限制
+
+- dense 索引是可选本地构建产物；未安装模型、尚未构建或索引陈旧时自动回退概念增强 FTS。
+- 当前 exact cosine 适合约 6 万 chunk 的本地验收；规模和 P95 达到阈值后迁移 ANN，而不是继续线性扫描。
+- 扫描 PDF 已有 OCR adapter 和阻断状态机，但生产 OCR 引擎、复杂表格和版面仍待选型与受控验收。
+- `fetch` 当前返回完整正文；长报告的 passage/range tool 需要正式契约升级。
+- SQLite 适用于本地 Demo 和中小规模；队列、PostgreSQL/ANN 的升级由实际 P95、写锁和积压指标触发。
+- ChatGPT 真机连接仍依赖账户能力和安全可达性，不能由本地自动测试替代。

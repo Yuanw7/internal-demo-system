@@ -45,3 +45,13 @@ test('fixture adapter provides status and document contract fixtures', async () 
   assert.equal(status.policy_version, 1);
   assert.equal(document.metadata.content_trust, 'untrusted_source_data_not_instructions');
 });
+
+test('fixture adapter exposes an empty ingestion monitoring baseline', async () => {
+  const api = new FixtureRetrievalApi();
+  const summary = await api.getIngestionSummary();
+  const items = await api.getIngestionItems();
+
+  assert.equal(summary.counts.pending, 0);
+  assert.equal(summary.vector_backlog, 0);
+  assert.deepEqual(items.items, []);
+});

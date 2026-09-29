@@ -2,12 +2,17 @@ import { ApiError, type RetrievalApi } from './client.ts';
 import { contractExamples } from './generated/contracts.ts';
 import type {
   MCPFetchResult,
+  IngestionItemDetail,
+  IngestionItemsResponse,
+  IngestionSummaryResponse,
   PolicyState,
   PolicyUpdate,
   SearchRequest,
   SearchResponse,
   SourcesResponse,
   StatusResponse,
+  RetryIngestionRequest,
+  RetryIngestionResponse,
 } from './generated/contracts.ts';
 import { parseContract } from './validation.ts';
 
@@ -89,5 +94,30 @@ export class FixtureRetrievalApi implements RetrievalApi {
 
     this.policyState = cloneFixture('PolicyState', contractExamples.policy_update_response);
     return structuredClone(this.policyState);
+  }
+
+  async getIngestionSummary(): Promise<IngestionSummaryResponse> {
+    return parseContract('IngestionSummaryResponse', {
+      as_of: '2026-09-29T00:00:00+00:00',
+      counts: { pending: 0, processing: 0, processed: 0, failed: 0, retrying: 0 },
+      vector_backlog: 0,
+      unresolved_dead_letters: 0,
+      oldest_pending_age_seconds: null,
+    });
+  }
+
+  async getIngestionItems(): Promise<IngestionItemsResponse> {
+    return parseContract('IngestionItemsResponse', { items: [], next_cursor: null });
+  }
+
+  async getIngestionItem(_itemId: string): Promise<IngestionItemDetail> {
+    throw new ApiError(404, 'ingestion_item_not_found', 'ingestion_item_not_found');
+  }
+
+  async retryIngestionItem(
+    _itemId: string,
+    _request: RetryIngestionRequest,
+  ): Promise<RetryIngestionResponse> {
+    throw new UnsupportedMockFixtureError('Fixture monitoring has no failed item to retry');
   }
 }

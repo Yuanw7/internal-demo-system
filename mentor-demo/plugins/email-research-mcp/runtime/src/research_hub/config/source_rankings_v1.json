@@ -1,0 +1,79 @@
+{
+  "version": "information-source-ranking-v1",
+  "tier_weights": {
+    "1": 1.35,
+    "2": 1.15,
+    "3": 1.0,
+    "4": 0.8
+  },
+  "role_precedence": [
+    "analyst",
+    "report_author",
+    "email_sender",
+    "institution",
+    "internal_note",
+    "data_provider",
+    "research_platform",
+    "news",
+    "social_media",
+    "manual_upload"
+  ],
+  "sources": [
+    {
+      "id": "fixture_orion_lee",
+      "display_name": "Fictional Orion Lee",
+      "source_type": "analyst",
+      "priority_tier": 1,
+      "aliases": ["O. Lee", "orion.lee@fictional.example"]
+    },
+    {
+      "id": "fixture_harbor_sender",
+      "display_name": "Fictional Harbor Sender",
+      "source_type": "email_sender",
+      "priority_tier": 1,
+      "aliases": ["harbor.sender@fictional.example"]
+    },
+    {
+      "id": "fixture_northstar_research",
+      "display_name": "Fictional Northstar Research",
+      "source_type": "institution",
+      "priority_tier": 2,
+      "aliases": ["Northstar Research", "northstar.example"]
+    },
+    {
+      "id": "fixture_internal_notes",
+      "display_name": "Fictional Internal Notes",
+      "source_type": "internal_note",
+      "priority_tier": 2,
+      "aliases": ["Internal Thesis Notes"]
+    },
+    {
+      "id": "fixture_market_library",
+      "display_name": "Fictional Market Library",
+      "source_type": "research_platform",
+      "priority_tier": 3,
+      "aliases": ["Market Library"]
+    },
+    {
+      "id": "fixture_general_attachments",
+      "display_name": "Fictional General Attachments",
+      "source_type": "manual_upload",
+      "priority_tier": 3,
+      "aliases": ["General Attachments"]
+    },
+    {
+      "id": "fixture_public_news",
+      "display_name": "Fictional Public News",
+      "source_type": "news",
+      "priority_tier": 4,
+      "aliases": ["Public News Wire"]
+    },
+    {
+      "id": "fixture_social_video",
+      "display_name": "Fictional Social Video",
+      "source_type": "social_media",
+      "priority_tier": 4,
+      "aliases": ["Social Video Channel"]
+    }
+  ]
+}

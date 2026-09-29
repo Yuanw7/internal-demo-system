@@ -47,7 +47,7 @@ MCP result 以兼容 envelope 计量，即同时包含 `structuredContent` 与 J
 | Payload | Unicode 字符 | UTF-8 bytes | 估算 tokens |
 |---|---:|---:|---:|
 | mcp_tool_schemas_search_fetch | 968 | 968 | 242 |
-| mcp_tool_schemas_all_three | 2285 | 2285 | 572 |
+| mcp_tool_schemas_all_three | 2251 | 2251 | 563 |
 | mcp_search_arguments | 14 | 18 | 5 |
 | mcp_search_result_envelope | 696 | 804 | 216 |
 | mcp_search_documents_result_envelope | 2288 | 2836 | 779 |
@@ -58,7 +58,7 @@ MCP result 以兼容 envelope 计量，即同时包含 `structuredContent` 与 J
 ## 结论
 
 - 标准轻量 `search` 相比详细 `search_documents` 样例少约 72.3% tool-result tokens。
-- 同时暴露高级搜索工具增加约 330 个工具 schema tokens。
+- 同时暴露高级搜索工具增加约 321 个工具 schema tokens。
 - 一次标准 search + 一次 fetch（含两工具 schema 和参数）约 855 tokens。
 - 当前短文样例中 fetch 占完整标准流程约 44.6%；真实长 PDF 的占比会更高。
 - Metadata filter 仍缺少过滤后响应，必须在阶段 E 用真实上游补录，不能从字段存在推断功能通过。

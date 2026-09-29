@@ -1,0 +1,23 @@
+{
+  "name": "email-research-mcp",
+  "version": "0.1.0",
+  "description": "Bundle a local read-only research MCP with an email evidence analysis skill.",
+  "author": {
+    "name": "Internal Research Demo Team"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Email Research MCP",
+    "shortDescription": "Analyze locally exported research email with citations.",
+    "longDescription": "Imports explicitly exported EML or JSON files into a local Retrieval Hub, then lets Codex search and read them through a read-only MCP workflow.",
+    "developerName": "Internal Research Demo Team",
+    "category": "Productivity",
+    "capabilities": ["Search", "Read"],
+    "defaultPrompt": [
+      "Use my imported research emails to analyze a company thesis.",
+      "Compare conflicting views in my imported research emails.",
+      "Find the strongest evidence and open questions for this investment idea."
+    ]
+  },
+  "mcpServers": "./.mcp.json"
+}
